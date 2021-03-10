@@ -11,8 +11,10 @@ readme = "README.md"
 repository = "https://github.com/SarthakSingh31/bevy_4x_camera"
 
 [dependencies]
-bevy = "0.4"
+bevy = { version = "0.4.0", default-features = false }
 
 [dev-dependencies]
 bevy_mod_picking = "0.3.5"
-rand = "0.8"
+# Panics on web without these.
+rand = { version = "0.7.0" }
+getrandom = { version = "0.1", features = ["wasm-bindgen"] }
