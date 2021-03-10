@@ -75,6 +75,8 @@ pub struct CameraRigBundle {
 struct MouseEventReader {
     motion: EventReader<MouseMotion>,
     wheel: EventReader<MouseWheel>,
+    cursor: EventReader<CursorMoved>,
+    last_cursor_pos: Vec2,
 }
 
 fn camera_rig_movement(
@@ -83,14 +85,17 @@ fn camera_rig_movement(
     keyboard_input: Res<Input<KeyCode>>,
     mouse_input: Res<Input<MouseButton>>,
     mouse_motion_events: Res<Events<MouseMotion>>,
+    curser_moved_events: Res<Events<CursorMoved>>,
     mouse_wheel_events: Res<Events<MouseWheel>>,
     mut rig_query: Query<(&mut Transform, &mut CameraRig, &Children)>,
     mut camera_query: Query<&mut Transform, With<Camera>>,
     mut follow_query: Query<&mut CameraRigFollow>,
 ) {
     for (mut rig_transform, mut rig, children) in rig_query.iter_mut() {
-        if rig.disable { continue; }
-        
+        if rig.disable {
+            continue;
+        }
+
         let mut move_to_rig = if let Some(trans) = rig.move_to.0 {
             trans
         } else {
@@ -157,6 +162,7 @@ fn camera_rig_movement(
         }
 
         // Rig Mouse Motion
+        // Currently broken: https://github.com/bevyengine/bevy/issues/1608
         let mut mouse_delta_y = 0.;
         for event in readers.motion.iter(&mouse_motion_events) {
             if mouse_input.pressed(rig.mouse.rotate) {
@@ -171,6 +177,26 @@ fn camera_rig_movement(
                 move_to_rig.translation += rig_transform.rotation
                     * Vec3::new(event.delta.y, 0., -event.delta.x)
                     * drag_sensitivity;
+                translated = true;
+            }
+        }
+
+        // Workaround for above issue.
+        let mut mouse_delta_y = 0.;
+        for event in readers.cursor.iter(&curser_moved_events) {
+            let delta = readers.last_cursor_pos - event.position;
+            readers.last_cursor_pos = event.position;
+            if mouse_input.pressed(rig.mouse.rotate) {
+                move_to_rig.rotate(Quat::from_rotation_y(
+                    -rig.mouse.rotate_sensitivity * delta.x,
+                ));
+                mouse_delta_y += delta.y;
+            }
+            if mouse_input.pressed(rig.mouse.drag) {
+                let drag_sensitivity = rig_transform.translation.y * rig.mouse.drag_sensitivity.0
+                    + rig.mouse.drag_sensitivity.1;
+                move_to_rig.translation +=
+                    rig_transform.rotation * Vec3::new(delta.y, 0., delta.x) * drag_sensitivity;
                 translated = true;
             }
         }
