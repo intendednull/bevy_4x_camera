@@ -188,7 +188,7 @@ fn camera_rig_movement(
             readers.last_cursor_pos = event.position;
             if mouse_input.pressed(rig.mouse.rotate) {
                 move_to_rig.rotate(Quat::from_rotation_y(
-                    -rig.mouse.rotate_sensitivity * delta.x,
+                    rig.mouse.rotate_sensitivity * delta.x,
                 ));
                 mouse_delta_y += delta.y;
             }
