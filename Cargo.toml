@@ -11,10 +11,13 @@ readme = "README.md"
 repository = "https://github.com/SarthakSingh31/bevy_4x_camera"
 
 [dependencies]
-bevy = { version = "0.4.0", default-features = false }
+# bevy = { version = "0.4.0", default-features = false }
+# bevy = { git = "https://github.com/bevyengine/bevy.git" }
+bevy = { git = "https://github.com/bevyengine/bevy.git", branch = "main", default-features = false, features = ["render"] }
 
 [dev-dependencies]
-bevy_mod_picking = "0.3.5"
+bevy_mod_picking = { git = "https://github.com/aevyrie/bevy_mod_picking.git" }
+# bevy_mod_picking = "0.3.5"
 # Panics on web without these.
 rand = { version = "0.7.0" }
 getrandom = { version = "0.1", features = ["wasm-bindgen"] }

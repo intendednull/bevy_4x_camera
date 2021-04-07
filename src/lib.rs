@@ -72,29 +72,39 @@ pub struct CameraRigBundle {
 }
 
 #[derive(Default)]
-struct MouseEventReader {
-    motion: EventReader<MouseMotion>,
-    wheel: EventReader<MouseWheel>,
-    cursor: EventReader<CursorMoved>,
-    last_cursor_pos: Vec2,
+struct CursorState {
+    pos: Vec2,
 }
 
 fn camera_rig_movement(
-    mut readers: Local<MouseEventReader>,
+    mut readers: Local<CursorState>,
     time: Res<Time>,
     keyboard_input: Res<Input<KeyCode>>,
     mouse_input: Res<Input<MouseButton>>,
-    mouse_motion_events: Res<Events<MouseMotion>>,
-    curser_moved_events: Res<Events<CursorMoved>>,
-    mouse_wheel_events: Res<Events<MouseWheel>>,
-    mut rig_query: Query<(&mut Transform, &mut CameraRig, &Children)>,
-    mut camera_query: Query<&mut Transform, With<Camera>>,
+    mut mouse_motion_events: EventReader<MouseMotion>,
+    mut curser_moved_events: EventReader<CursorMoved>,
+    mut mouse_wheel_events: EventReader<MouseWheel>,
+    // mut query: QuerySet<(
+    // Query<(&mut Transform, &mut CameraRig, &Children)>,
+    // Query<&mut Transform, With<Camera>>,
+    // Query<&mut CameraRigFollow>,
+    // )>,
+    mut rig_query: Query<(Entity, &mut CameraRig, &Children), Without<Camera>>,
+    mut transforms_query: Query<&mut Transform>,
     mut follow_query: Query<&mut CameraRigFollow>,
+    // mut camera_query: Query<&mut Transform, With<Camera>>,
+    // mut rig_query: Query<(&mut Transform, &mut CameraRig, &Children), Without<Camera>>,
+    // mut follow_query: Query<&mut CameraRigFollow>,
 ) {
-    for (mut rig_transform, mut rig, children) in rig_query.iter_mut() {
+    let mut any_translated = false;
+
+    for (rig_entity, mut rig, children) in rig_query.iter_mut() {
+        // for (mut rig_transform, mut rig, children) in query.q0_mut().iter_mut() {
         if rig.disable {
             continue;
         }
+
+        let mut rig_transform = transforms_query.get_mut(rig_entity).unwrap();
 
         let mut move_to_rig = if let Some(trans) = rig.move_to.0 {
             trans
@@ -112,7 +122,7 @@ fn camera_rig_movement(
             .iter()
             .any(|key| keyboard_input.pressed(*key))
         {
-            move_to_rig.translation += rig_transform.rotation * Vec3::unit_x() * move_sensitivity;
+            move_to_rig.translation += rig_transform.rotation * Vec3::X * move_sensitivity;
             translated = true;
         }
         if rig
@@ -121,7 +131,7 @@ fn camera_rig_movement(
             .iter()
             .any(|key| keyboard_input.pressed(*key))
         {
-            move_to_rig.translation -= rig_transform.rotation * Vec3::unit_x() * move_sensitivity;
+            move_to_rig.translation -= rig_transform.rotation * Vec3::X * move_sensitivity;
             translated = true;
         }
         if rig
@@ -130,7 +140,7 @@ fn camera_rig_movement(
             .iter()
             .any(|key| keyboard_input.pressed(*key))
         {
-            move_to_rig.translation += rig_transform.rotation * Vec3::unit_z() * move_sensitivity;
+            move_to_rig.translation += rig_transform.rotation * Vec3::X * move_sensitivity;
             translated = true;
         }
         if rig
@@ -139,7 +149,7 @@ fn camera_rig_movement(
             .iter()
             .any(|key| keyboard_input.pressed(*key))
         {
-            move_to_rig.translation -= rig_transform.rotation * Vec3::unit_z() * move_sensitivity;
+            move_to_rig.translation -= rig_transform.rotation * Vec3::X * move_sensitivity;
             translated = true;
         }
 
@@ -164,7 +174,7 @@ fn camera_rig_movement(
         // Rig Mouse Motion
         // Currently broken: https://github.com/bevyengine/bevy/issues/1608
         let mut mouse_delta_y = 0.;
-        for event in readers.motion.iter(&mouse_motion_events) {
+        for event in mouse_motion_events.iter() {
             if mouse_input.pressed(rig.mouse.rotate) {
                 move_to_rig.rotate(Quat::from_rotation_y(
                     -rig.mouse.rotate_sensitivity * event.delta.x,
@@ -183,9 +193,9 @@ fn camera_rig_movement(
 
         // Workaround for above issue.
         let mut mouse_delta_y = 0.;
-        for event in readers.cursor.iter(&curser_moved_events) {
-            let delta = readers.last_cursor_pos - event.position;
-            readers.last_cursor_pos = event.position;
+        for event in curser_moved_events.iter() {
+            let delta = readers.pos - event.position;
+            readers.pos = event.position;
             if mouse_input.pressed(rig.mouse.rotate) {
                 move_to_rig.rotate(Quat::from_rotation_y(
                     rig.mouse.rotate_sensitivity * delta.x,
@@ -198,12 +208,6 @@ fn camera_rig_movement(
                 move_to_rig.translation +=
                     rig_transform.rotation * Vec3::new(delta.y, 0., delta.x) * drag_sensitivity;
                 translated = true;
-            }
-        }
-
-        if translated {
-            for mut followable in follow_query.iter_mut() {
-                followable.0 = false;
             }
         }
 
@@ -241,7 +245,8 @@ fn camera_rig_movement(
 
         let mut found_camera_child = false;
         for child in children.iter() {
-            if let Ok(mut transform) = camera_query.get_mut(*child) {
+            if let Ok(mut transform) = transforms_query.get_mut(*child) {
+                // if let Ok(mut transform) = query.q1_mut().get_mut(*child) {
                 let mut move_to_camera = if let Some(trans) = rig.move_to.1 {
                     trans
                 } else {
@@ -249,9 +254,9 @@ fn camera_rig_movement(
                 };
 
                 // Camera Mouse Zoom
-                for event in readers.wheel.iter(&mouse_wheel_events) {
+                for event in mouse_wheel_events.iter() {
                     move_to_camera.translation -=
-                        move_to_camera.forward() * event.y * rig.mouse.zoom_sensitivity;
+                        move_to_camera.local_z() * event.y * rig.mouse.zoom_sensitivity;
                 }
 
                 // Camera Mouse Rotate
@@ -304,6 +309,17 @@ fn camera_rig_movement(
         if !found_camera_child {
             todo!("bevy diagnostics error here / should I panic here?");
         }
+
+        if translated {
+            any_translated = true;
+        }
+    }
+
+    if any_translated {
+        for mut followable in follow_query.iter_mut() {
+            // for mut followable in query.q2_mut().iter_mut() {
+            followable.0 = false;
+        }
     }
 }
 
@@ -311,12 +327,15 @@ pub struct CameraRigFollow(pub bool);
 
 fn camera_rig_follow(
     time: Res<Time>,
-    mut rig_query: Query<(&mut Transform, &mut CameraRig)>,
-    mut follow_query: Query<(&mut Transform, &CameraRigFollow), Changed<Transform>>,
+    mut transforms_query: Query<&mut Transform>,
+    mut rig_query: Query<(Entity, &mut CameraRig)>,
+    mut follow_query: Query<(Entity, &CameraRigFollow)>,
 ) {
-    for (follow_transform, follow) in follow_query.iter_mut() {
+    for (follow_entity, follow) in follow_query.iter_mut() {
+        let follow_transform = transforms_query.get_mut(follow_entity).unwrap().clone();
         if follow.0 {
-            for (mut transform, mut rig) in rig_query.iter_mut() {
+            for (rig_entity, mut rig) in rig_query.iter_mut() {
+                let mut transform = transforms_query.get_mut(rig_entity).unwrap();
                 if follow_transform.translation != transform.translation {
                     if follow_transform
                         .translation
