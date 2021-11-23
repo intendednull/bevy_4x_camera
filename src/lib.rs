@@ -13,7 +13,7 @@ pub enum CameraSystem {
 pub struct FourXCameraPlugin;
 
 impl Plugin for FourXCameraPlugin {
-    fn build(&self, app: &mut AppBuilder) {
+    fn build(&self, app: &mut App) {
         app.add_system(
             camera_rig_movement
                 .system()
@@ -79,7 +79,7 @@ impl Default for MouseConf {
 }
 
 /// TODO: Add the ability set more input type here like gamepad
-#[derive(Default)]
+#[derive(Default, Component)]
 pub struct CameraRig {
     pub keyboard: KeyboardConf,
     pub mouse: MouseConf,
@@ -102,10 +102,12 @@ fn camera_rig_movement(
     mut mouse_motion_events: EventReader<MouseMotion>,
     mut mouse_wheel_events: EventReader<MouseWheel>,
     mut camera_rig_query: Query<(&mut CameraRig, &Children, Entity)>,
-    mut rig_cam_query: QuerySet<(
-        Query<&mut Transform, With<CameraRig>>,
-        Query<&mut Transform, With<Camera>>,
-    )>,
+    camera_query: Query<Entity, With<Camera>>,
+    mut transforms: Query<&mut Transform>,
+    // mut rig_cam_query: QuerySet<(
+    // Query<&mut Transform, With<CameraRig>>,
+    // Query<&mut Transform, With<Camera>>,
+    // )>,
     mut follow_query: Query<&mut CameraRigFollow>,
 ) {
     for (mut rig, children, entity) in camera_rig_query.iter_mut() {
@@ -113,7 +115,7 @@ fn camera_rig_movement(
             continue;
         }
 
-        let mut rig_transform = if let Ok(transform) = rig_cam_query.q0_mut().get_mut(entity) {
+        let mut rig_transform = if let Ok(transform) = transforms.get_mut(entity) {
             transform.clone()
         } else {
             panic!("Rig missing a transform")
@@ -241,7 +243,7 @@ fn camera_rig_movement(
             }
         }
         for child in children.iter() {
-            if let Ok(mut transform) = rig_cam_query.q1_mut().get_mut(*child) {
+            if let Ok(mut transform) = transforms.get_mut(*child) {
                 let mut move_to_camera = if let Some(trans) = rig.move_to.1 {
                     trans
                 } else {
@@ -302,7 +304,7 @@ fn camera_rig_movement(
             }
         }
 
-        if let Ok(mut transform) = rig_cam_query.q0_mut().get_mut(entity) {
+        if let Ok(mut transform) = transforms.get_mut(entity) {
             if *transform != rig_transform {
                 *transform = rig_transform;
             }
@@ -310,23 +312,31 @@ fn camera_rig_movement(
     }
 }
 
+#[derive(Component)]
 pub struct CameraRigFollow(pub bool);
 
 fn camera_rig_follow(
     time: Res<Time>,
-    mut rig_query: QuerySet<(
-        Query<(&mut Transform, &mut CameraRig)>,
-        Query<(&Transform, &CameraRigFollow), Changed<Transform>>,
-    )>,
+    mut transforms: Query<&mut Transform>,
+    mut camera_rig: Query<(&mut CameraRig, Entity)>,
+    camera_rig_follow: Query<(&CameraRigFollow, Entity)>,
 ) {
-    let (follow_transform, follow) =
-        if let Some((follow_transform, follow)) = rig_query.q1_mut().iter_mut().last() {
-            (follow_transform.clone(), follow.clone())
-        } else {
-            return;
-        };
+    let (follow_transform, follow) = if let Some((follow_transform, follow)) =
+        camera_rig_follow.iter().last().map(|(rig, entity)| {
+            (
+                transforms
+                    .get_mut(entity)
+                    .expect("No transform on rig follow"),
+                rig,
+            )
+        }) {
+        (follow_transform.clone(), follow.clone())
+    } else {
+        return;
+    };
     if (*follow).0 {
-        for (mut transform, mut rig) in rig_query.q0_mut().iter_mut() {
+        for (mut rig, entity) in camera_rig.iter_mut() {
+            let mut transform = transforms.get_mut(entity).expect("No tranform on rig");
             if follow_transform.translation != transform.translation {
                 if follow_transform
                     .translation
